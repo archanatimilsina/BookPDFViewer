@@ -125,6 +125,7 @@
   const DPR = Math.min(window.devicePixelRatio || 1, 1.5);
   const RENDER_HEIGHT = Math.round(2400 * DPR);
 
+  // ---- Zoom state ----
   const ZOOM_MIN = 0.5;
   const ZOOM_MAX = 3.0;
   const ZOOM_STEP = 0.25;
@@ -190,6 +191,7 @@
     return { pageW, pageH };
   }
 
+  // ---- Zoom application ----
   function applyZoom() {
     els.book.style.transform = "scale(" + zoomLevel + ")";
     els.book.style.transformOrigin = "center center";
@@ -199,7 +201,8 @@
     if (els.zoomInBtn) els.zoomInBtn.disabled = zoomLevel >= ZOOM_MAX - 1e-9;
     if (els.zoomOutBtn) els.zoomOutBtn.disabled = zoomLevel <= ZOOM_MIN + 1e-9;
 
-
+    // Give the stage extra scroll room when zoomed in past 100%,
+    // so the enlarged book doesn't just get clipped by overflow:hidden.
     if (els.stage) {
       els.stage.style.overflow = zoomLevel > 1 ? "auto" : "hidden";
     }
@@ -215,13 +218,15 @@
   function resetZoom() { setZoom(1.0); }
 
   function ensureZoomControls() {
+    // If the toolbar already has zoom buttons in viewer.html, just wire them up.
     if (els.zoomInBtn && els.zoomOutBtn) {
       els.zoomInBtn.addEventListener("click", zoomIn);
       els.zoomOutBtn.addEventListener("click", zoomOut);
       return;
     }
 
-
+    // Otherwise, build a small zoom control group and drop it into the
+    // toolbar next to the fullscreen button so nothing else has to change.
     const toolbar = els.fsBtn ? els.fsBtn.parentElement : null;
     if (!toolbar) return;
 
@@ -296,7 +301,14 @@
       els.flipFrontImg.src = pageImages[leftIndex + 1] || "";
       els.flipBackImg.src = pageImages[leftIndex + 2] || "";
 
-     
+      // The flip panel starts by covering the RIGHT slot (front face
+      // matches the current right page) and ends up covering the LEFT
+      // slot (back face = new left page). As it rotates past 90deg it
+      // swings away from the right slot and uncovers whatever is
+      // sitting underneath it. If we waited until the animation ended
+      // to update #rightImg, the OLD right page would flash back into
+      // view for the second half of the animation. So we swap it now,
+      // while it's still fully hidden behind the opaque flip panel.
       els.rightImg.src = pageImages[leftIndex + 3] || "";
 
       els.flipPanel.style.left = pageW + "px";
@@ -324,6 +336,10 @@
       els.flipFrontImg.src = pageImages[leftIndex] || "";
       els.flipBackImg.src = pageImages[leftIndex - 1] || "";
 
+      // Same reasoning as the "next" branch, mirrored: this panel starts
+      // covering the LEFT slot and ends covering the RIGHT slot, so it's
+      // the LEFT slot's underlying image that goes stale mid-animation
+      // unless we swap it now while it's still hidden.
       els.leftImg.src = pageImages[leftIndex - 2] || "";
 
       els.flipPanel.style.left = "0px";
@@ -359,7 +375,8 @@
     els.edgePrev.addEventListener("click", goPrev);
     els.edgeNext.addEventListener("click", goNext);
 
-  
+    // Double-click on a page turns the book in that direction:
+    // right page -> go forward, left page -> go backward.
     els.rightPage.addEventListener("dblclick", (e) => {
       e.preventDefault();
       goNext();
@@ -386,6 +403,7 @@
       }
     });
 
+    // Ctrl/Cmd + mouse wheel zoom over the book.
     els.stage.addEventListener("wheel", (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();

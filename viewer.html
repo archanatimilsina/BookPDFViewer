@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Book PDF Viewer</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="topbar">
+<div id="docTitle">Book PDF Viewer</div>
+<div id="controls">
+<button id="prevBtn" title="Previous page (←)">‹</button>
+<div id="pageIndicator">
+<span id="pageCurrent">1</span><span id="pageTotal">/ –</span>
+</div>
+<button id="nextBtn" title="Next page (→)">›</button>
+<span class="sep"></span>
+<button id="zoomOutBtn" title="Zoom out (Ctrl -)">−</button>
+<span id="zoomLevelLabel" title="Double-click to reset zoom">100%</span>
+<button id="zoomInBtn" title="Zoom in (Ctrl +)">+</button>
+<span class="sep"></span>
+<button id="disableBtn" title="Stop using book view for this PDF" style="display:none;">⏻</button>
+<button id="fsBtn" title="Fullscreen">⛶</button>
+</div>
+</div>
+
+<div id="stage">
+
+<div id="landing">
+<div id="landingIcon">📖</div>
+<div id="landingTitle">Open a PDF to read it as a book</div>
+<div id="dropZone">
+<div id="dropZoneText">Drag &amp; drop a PDF file here</div>
+<div id="dropZoneOr">or</div>
+<button id="browseBtn">Choose a PDF file...</button>
+<input id="fileInput" type="file" accept="application/pdf" style="display:none;" />
+</div>
+</div>
+
+<div id="loading" style="display:none;">
+<div id="loadingBook">📖</div>
+<div id="loadingText">Opening PDF...</div>
+<div id="progressTrack"><div id="progressFill"></div></div>
+</div>
+
+<div id="bookWrap" style="display:none;">
+<button id="edgePrev" class="edgeHint left" title="Previous page"></button>
+<div id="book">
+<div id="leftPage" class="page" title="Double-click to go back"><img id="leftImg" alt="" /></div>
+<div id="rightPage" class="page" title="Double-click to go forward"><img id="rightImg" alt="" /></div>
+<div id="flipPanel" class="flipPanel">
+<div class="face front"><img id="flipFrontImg" alt="" /></div>
+<div class="face back"><img id="flipBackImg" alt="" /></div>
+</div>
+</div>
+<button id="edgeNext" class="edgeHint right" title="Next page"></button>
+</div>
+
+<div id="errorBox" style="display:none;">
+<p id="errorText"></p>
+</div>
+</div>
+
+<script src="pdfjs/pdf.min.js"></script>
+<script src="viewer.js"></script>
+</body>
+</html>

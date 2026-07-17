@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      width: 260px;
+      padding: 14px;
+      background: #2b2320;
+      color: #f1e9df;
+    }
+    h1 {
+      font-size: 14px;
+      margin: 0 0 10px;
+      font-weight: 600;
+      letter-spacing: .02em;
+    }
+    label {
+      display: block;
+      font-size: 11px;
+      opacity: .75;
+      margin: 10px 0 4px;
+    }
+    input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #5a4c42;
+      background: #3a3028;
+      color: #f1e9df;
+      font-size: 12px;
+    }
+    button {
+      width: 100%;
+      margin-top: 8px;
+      padding: 7px 8px;
+      border-radius: 6px;
+      border: none;
+      background: #b5793a;
+      color: #241b16;
+      font-weight: 600;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    button:hover { background: #c68a48; }
+    .or {
+      text-align: center;
+      font-size: 10px;
+      opacity: .5;
+      margin: 10px 0;
+    }
+    input[type="file"] {
+      font-size: 11px;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <h1>📖 Book PDF Viewer</h1>
+
+  <label for="url">Open a PDF from a URL</label>
+  <input type="text" id="url" placeholder="https://example.com/file.pdf" />
+  <button id="openUrl">Open as book</button>
+
+  <div class="or">— or —</div>
+
+  <label for="file">Open a local PDF file</label>
+  <input type="file" id="file" accept="application/pdf" />
+
+  <script src="popup.js"></script>
+</body>
+</html>

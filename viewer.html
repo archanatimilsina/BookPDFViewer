@@ -9,6 +9,7 @@
 
 <div id="topbar">
 <div id="docTitle">Book PDF Viewer</div>
+<div id="bgProgress" style="display:none;"></div>
 <div id="controls">
 <button id="prevBtn" title="Previous page (←)">‹</button>
 <div id="pageIndicator">
@@ -20,6 +21,7 @@
 <span id="zoomLevelLabel" title="Double-click to reset zoom">100%</span>
 <button id="zoomInBtn" title="Zoom in (Ctrl +)">+</button>
 <span class="sep"></span>
+<button id="downloadBtn" title="Download this PDF" style="display:none;">⬇</button>
 <button id="disableBtn" title="Stop using book view for this PDF" style="display:none;">⏻</button>
 <button id="fsBtn" title="Fullscreen">⛶</button>
 </div>
@@ -63,6 +65,7 @@
 </div>
 
 <script src="pdfjs/pdf.min.js"></script>
+<script src="shortlink.js"></script>
 <script src="viewer.js"></script>
 </body>
 </html>

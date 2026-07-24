@@ -51,9 +51,12 @@
       opacity: .5;
       margin: 10px 0;
     }
-    input[type="file"] {
+    #urlError {
+      display: none;
       font-size: 11px;
-      width: 100%;
+      color: #e08a6a;
+      margin-top: 6px;
+      line-height: 1.4;
     }
   </style>
 </head>
@@ -62,13 +65,14 @@
 
   <label for="url">Open a PDF from a URL</label>
   <input type="text" id="url" placeholder="https://example.com/file.pdf" />
+  <div id="urlError"></div>
   <button id="openUrl">Open as book</button>
 
   <div class="or">— or —</div>
 
-  <label for="file">Open a local PDF file</label>
-  <input type="file" id="file" accept="application/pdf" />
+  <button id="openLocal">Open a local PDF file…</button>
 
+  <script src="shortlink.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

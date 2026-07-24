@@ -1,30 +1,45 @@
-const VIEWER_PAGE = browser.runtime.getURL("viewer.html");
+// VIEWER_PAGE and buildViewerLink come from shortlink.js, loaded
+// before this file (see popup.html).
+const urlInput = document.getElementById("url");
+const urlError = document.getElementById("urlError");
 
-document.getElementById("openUrl").addEventListener("click", () => {
-  const val = document.getElementById("url").value.trim();
+function showUrlError(msg) {
+  urlError.textContent = msg;
+  urlError.style.display = "block";
+}
+
+function clearUrlError() {
+  urlError.style.display = "none";
+}
+
+urlInput.addEventListener("input", clearUrlError);
+
+document.getElementById("openUrl").addEventListener("click", async () => {
+  const val = urlInput.value.trim();
   if (!val) return;
-  browser.tabs.create({ url: VIEWER_PAGE + "?file=" + encodeURIComponent(val) });
+
+  let parsed;
+  try {
+    parsed = new URL(val);
+  } catch (e) {
+    showUrlError("That doesn't look like a valid URL. Include the full address, e.g. https://example.com/file.pdf");
+    return;
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    showUrlError("Please use an http:// or https:// link to a PDF.");
+    return;
+  }
+
+  clearUrlError();
+  const target = await buildViewerLink(val);
+  browser.tabs.create({ url: target });
   window.close();
 });
 
-document.getElementById("file").addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const buf = await file.arrayBuffer();
-  let binary = "";
-  const bytes = new Uint8Array(buf);
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-  }
-  const base64 = btoa(binary);
-
-  const key = "localpdf-" + Date.now();
-  await browser.storage.local.set({ [key]: base64 });
-
-  browser.tabs.create({
-    url: VIEWER_PAGE + "?storageKey=" + encodeURIComponent(key) + "&name=" + encodeURIComponent(file.name)
-  });
+document.getElementById("openLocal").addEventListener("click", () => {
+  // Opens the viewer's own landing screen (Browse button + drag & drop),
+  // which runs in a real tab and loads the file straight into the book view.
+  browser.tabs.create({ url: VIEWER_PAGE });
   window.close();
 });

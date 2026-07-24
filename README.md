@@ -33,11 +33,13 @@ specific to this one.)
 
 ## Controls
 
-- `←` / `→` arrow keys, or the on-screen `‹` `›` buttons, turn pages
-- Click-and-drag a page corner to flip it like a real book
-- Type a page number in the box to jump straight there
-- `+` / `–` zoom the book in and out
+- `←` / `→` arrow keys, the on-screen `‹` `›` buttons, or clicking the left/right
+  edge of the book turn pages with a page-flip animation
+- Double-click the left or right page to flip back/forward
+- `Ctrl`/`Cmd` `+` / `–` (or `Ctrl`/`Cmd` + scroll wheel) zoom the book in and out;
+  double-click the zoom percentage to reset it
 - ⛶ toggles fullscreen
+- ⏻ stops book view for this specific PDF and falls back to Firefox's normal viewer
 
 ## Licensing
 

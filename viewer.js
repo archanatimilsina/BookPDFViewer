@@ -32,6 +32,8 @@
     pageTotal: document.getElementById("pageTotal"),
     fsBtn: document.getElementById("fsBtn"),
     disableBtn: document.getElementById("disableBtn"),
+    downloadBtn: document.getElementById("downloadBtn"),
+    bgProgress: document.getElementById("bgProgress"),
     stage: document.getElementById("stage"),
     zoomInBtn: document.getElementById("zoomInBtn"),
     zoomOutBtn: document.getElementById("zoomOutBtn"),
@@ -58,6 +60,14 @@
 
   function describeOpenError(e) {
     const raw = (e && e.message) ? e.message : String(e || "");
+
+    if (raw === "NOT_PDF") {
+      return "That link doesn't seem to point to a PDF file. Double-check the URL and try again.";
+    }
+    if (raw === "NETWORK_ERROR") {
+      return "Couldn't reach that URL. Check the address and your internet connection, then try again.";
+    }
+
     const statusMatch = raw.match(/\((\d{3})\)/);
     const status = statusMatch ? statusMatch[1] : null;
 
@@ -84,7 +94,78 @@
     if (text) els.loadingText.textContent = text;
   }
 
+  async function fetchPdfBytes(url, onProgress) {
+    let response;
+    try {
+      response = await fetch(url, { credentials: "omit" });
+    } catch (e) {
+      throw new Error("NETWORK_ERROR");
+    }
+
+    if (!response.ok) {
+      throw new Error("(" + response.status + ") " + response.statusText);
+    }
+
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
+    const totalBytes = Number(response.headers.get("content-length")) || 0;
+
+    let bytes;
+    if (response.body && response.body.getReader) {
+      const reader = response.body.getReader();
+      const chunks = [];
+      let received = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (totalBytes && onProgress) onProgress(received / totalBytes);
+      }
+      bytes = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.length;
+      }
+    } else {
+      bytes = new Uint8Array(await response.arrayBuffer());
+    }
+
+    let header = "";
+    for (let i = 0; i < Math.min(5, bytes.length); i++) header += String.fromCharCode(bytes[i]);
+    const looksLikePdf = header === "%PDF-" || contentType.includes("application/pdf");
+    if (!looksLikePdf) {
+      throw new Error("NOT_PDF");
+    }
+
+    return bytes;
+  }
+
   async function getSourceFromParams(params) {
+    const docKey = params.get("doc");
+    if (docKey) {
+      // VIEWER_PAGE / docStorageArea come from shortlink.js.
+      let record;
+      try {
+        const stored = await docStorageArea().get(docKey);
+        record = stored[docKey];
+      } catch (e) {
+        record = null;
+      }
+      if (!record || !record.url) {
+        throw new Error("This link has expired. Please open the PDF again.");
+      }
+      docStorageArea().remove(docKey);
+      let name;
+      try {
+        const u = new URL(record.url);
+        name = decodeURIComponent(u.pathname.split("/").pop() || "Document");
+      } catch (e) {
+        name = "Document";
+      }
+      return { url: record.url, title: name };
+    }
+
     const storageKey = params.get("storageKey");
     if (storageKey) {
       const stored = await browser.storage.local.get(storageKey);
@@ -121,6 +202,8 @@
   let pageAspect = 1;
   let leftIndex = 0;
   let isFlipping = false;
+  let currentPdfBytes = null;
+  let currentUseLosslessPng = true;
 
   const DPR = Math.min(window.devicePixelRatio || 1, 1.5);
   const RENDER_HEIGHT = Math.round(2400 * DPR);
@@ -282,21 +365,124 @@
     els.edgeNext.style.visibility = (leftIndex + 2 >= total) ? "hidden" : "visible";
   }
 
-  function animateFlip(direction) {
+  // Setting img.src doesn't mean the pixels are ready to paint — the
+  // browser still has to decode that image, and for the large PNGs this
+  // viewer generates that decode can take long enough to be visible.
+  // Without this, the CSS flip transition starts on a not-yet-decoded
+  // frame: the old page hangs on screen and the new one "swims" in a
+  // moment later instead of turning cleanly. Awaiting decode() first
+  // makes sure the pixels are already in memory before the flip begins.
+  function decodeImage(img) {
+    if (!img || !img.src || !img.decode) return Promise.resolve();
+    return img.decode().catch(() => {});
+  }
+
+  async function ensurePageRendered(idx) {
+    if (idx < 0 || idx >= pageImages.length) return null;
+    if (pageImages[idx]) return pageImages[idx];
+    const pageNum = idx + 1;
+    if (pageNum > pdfDoc.numPages) {
+      pageImages[idx] = blankPageDataUrl();
+      return pageImages[idx];
+    }
+    pageImages[idx] = await renderPageToImage(pageNum, currentUseLosslessPng);
+    return pageImages[idx];
+  }
+
+  function updateBgProgress(state) {
+    if (!els.bgProgress) return;
+    if (!state) {
+      els.bgProgress.style.display = "none";
+      return;
+    }
+    els.bgProgress.style.display = "inline-flex";
+    els.bgProgress.textContent = "Preparing pages " + state.done + "/" + state.total + "…";
+  }
+
+  async function renderRemainingInBackground(total) {
+    if (total <= 2) {
+      updateBgProgress(null);
+      return;
+    }
+    for (let p = 3; p <= total; p++) {
+      const idx = p - 1;
+      if (!pageImages[idx]) {
+        pageImages[idx] = await renderPageToImage(p, currentUseLosslessPng);
+        if (idx === leftIndex || idx === leftIndex + 1) {
+          renderSpread();
+        }
+      }
+      updateBgProgress({ done: p, total });
+    }
+    updateBgProgress(null);
+  }
+
+  function pdfFilenameFor(title) {
+    const base = (title || "document").replace(/[\\/:*?"<>|]+/g, "_").trim() || "document";
+    return /\.pdf$/i.test(base) ? base : base + ".pdf";
+  }
+
+  function downloadCurrentPdf() {
+    if (!currentPdfBytes) return;
+    const blob = new Blob([currentPdfBytes], { type: "application/pdf" });
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = pdfFilenameFor(els.docTitle.textContent);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+  }
+
+  async function animateFlip(direction) {
     if (isFlipping) return;
     const total = pageImages.length;
     if (direction === "next" && leftIndex + 2 >= total) return;
     if (direction === "prev" && leftIndex <= 0) return;
 
     isFlipping = true;
+
+    try {
+      if (direction === "next") {
+        await Promise.all([
+          ensurePageRendered(leftIndex + 1),
+          ensurePageRendered(leftIndex + 2)
+        ]);
+        // Fire-and-forget: get the *next* spread ready in the background
+        // too, so the flip after this one is far less likely to have to
+        // sit and wait on rendering before it can even start.
+        ensurePageRendered(leftIndex + 3);
+        ensurePageRendered(leftIndex + 4);
+      } else {
+        await Promise.all([
+          ensurePageRendered(leftIndex - 1),
+          ensurePageRendered(leftIndex)
+        ]);
+        ensurePageRendered(leftIndex - 3);
+        ensurePageRendered(leftIndex - 4);
+      }
+    } catch (e) {
+      isFlipping = false;
+      showError(describeOpenError(e));
+      return;
+    }
+
     const { pageW } = computePageSize();
 
     if (direction === "next") {
       els.flipFrontImg.src = pageImages[leftIndex + 1] || "";
       els.flipBackImg.src = pageImages[leftIndex + 2] || "";
-
-   
       els.rightImg.src = pageImages[leftIndex + 3] || "";
+
+      // Wait for all three freshly-assigned images to finish decoding
+      // before the flip starts — otherwise the transform plays over a
+      // still-decoding frame and the new page visibly "swims" in late.
+      await Promise.all([
+        decodeImage(els.flipFrontImg),
+        decodeImage(els.flipBackImg),
+        decodeImage(els.rightImg)
+      ]);
 
       els.flipPanel.style.left = pageW + "px";
       els.flipPanel.style.right = "";
@@ -322,8 +508,13 @@
     } else {
       els.flipFrontImg.src = pageImages[leftIndex] || "";
       els.flipBackImg.src = pageImages[leftIndex - 1] || "";
-
       els.leftImg.src = pageImages[leftIndex - 2] || "";
+
+      await Promise.all([
+        decodeImage(els.flipFrontImg),
+        decodeImage(els.flipBackImg),
+        decodeImage(els.leftImg)
+      ]);
 
       els.flipPanel.style.left = "0px";
       els.flipPanel.style.right = "";
@@ -407,6 +598,7 @@
     });
 
     els.disableBtn.addEventListener("click", disableForThisPdf);
+    els.downloadBtn.addEventListener("click", downloadCurrentPdf);
 
     ensureZoomControls();
   }
@@ -474,19 +666,36 @@
 
     currentSourceUrl = src.url || null;
     els.disableBtn.style.display = currentSourceUrl ? "flex" : "none";
+    els.downloadBtn.style.display = "none";
+    currentPdfBytes = null;
+    updateBgProgress(null);
 
-    let loadingTask;
+    showLoading();
+
+    let rawBytes;
+    if (src.data) {
+      rawBytes = src.data instanceof Uint8Array ? src.data : new Uint8Array(src.data);
+    } else if (src.url) {
+      setProgress(0, "Downloading PDF…");
+      rawBytes = await fetchPdfBytes(src.url, (frac) => setProgress(frac, "Downloading PDF…"));
+    } else {
+      throw new Error("No PDF source was provided.");
+    }
+
+    // Keep the original bytes for the Download button — pdf.js may transfer
+    // ownership of whatever buffer we hand it to its worker, so it gets a copy.
+    currentPdfBytes = rawBytes;
+
     const cMapUrl = browser.runtime.getURL("pdfjs/cmaps/");
     const standardFontDataUrl = browser.runtime.getURL("pdfjs/standard_fonts/");
 
-    loadingTask = src.data
-      ? pdfjsLib.getDocument({ data: src.data, cMapUrl, cMapPacked: true, standardFontDataUrl })
-      : pdfjsLib.getDocument({ url: src.url, cMapUrl, cMapPacked: true, standardFontDataUrl });
-
-    loadingTask.onProgress = (p) => {
-      if (p.total) setProgress(p.loaded / p.total, "Downloading PDF…");
-    };
-
+    setProgress(0, "Opening PDF…");
+    const loadingTask = pdfjsLib.getDocument({
+      data: rawBytes.slice(),
+      cMapUrl,
+      cMapPacked: true,
+      standardFontDataUrl
+    });
     pdfDoc = await loadingTask.promise;
 
     const total = pdfDoc.numPages;
@@ -497,23 +706,31 @@
     pageAspect = vp.width / vp.height;
 
     resetZoom();
-    applySize();
 
-    const useLosslessPng = total <= 60;
+    currentUseLosslessPng = total <= 60;
+    const arrLen = total + (total % 2 !== 0 ? 1 : 0);
+    pageImages = new Array(arrLen).fill(null);
 
-    pageImages = new Array(total);
-    for (let i = 1; i <= total; i++) {
-      pageImages[i - 1] = await renderPageToImage(i, useLosslessPng);
-      setProgress(i / total, `Rendering page ${i} of ${total}…`);
+    // Only render the first spread before showing the book — the rest
+    // renders in the background so opening a long PDF feels instant.
+    setProgress(0.35, "Preparing page 1…");
+    pageImages[0] = await renderPageToImage(1, currentUseLosslessPng);
+    if (total >= 2) {
+      setProgress(0.7, "Preparing page 2…");
+      pageImages[1] = await renderPageToImage(2, currentUseLosslessPng);
     }
     if (total % 2 !== 0) {
-      pageImages.push(blankPageDataUrl());
+      pageImages[arrLen - 1] = blankPageDataUrl();
     }
 
+    applySize();
     hideAllScreens();
     els.bookWrap.style.display = "flex";
+    els.downloadBtn.style.display = "flex";
     leftIndex = 0;
     renderSpread();
+
+    renderRemainingInBackground(total);
   }
 
   async function main() {

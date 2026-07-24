@@ -1,4 +1,6 @@
-const VIEWER_PAGE = browser.runtime.getURL("viewer.html");
+// VIEWER_PAGE, buildViewerLink, and cleanupStaleDocs come from
+// shortlink.js, loaded before this file (see manifest.json).
+cleanupStaleDocs();
 
 function isAlreadyOurViewer(url) {
   return url.startsWith(VIEWER_PAGE) || url.startsWith("moz-extension://");
@@ -51,8 +53,7 @@ browser.webRequest.onHeadersReceived.addListener(
     const isForcedDownload = disposition.includes("attachment");
 
     if ((isPdfContentType || looksLikePdfUrl(details.url)) && !isForcedDownload) {
-      const target = VIEWER_PAGE + "?file=" + encodeURIComponent(details.url);
-      return { redirectUrl: target };
+      return buildViewerLink(details.url).then((target) => ({ redirectUrl: target }));
     }
 
     return {};
@@ -64,8 +65,9 @@ browser.webRequest.onHeadersReceived.addListener(
 
 browser.runtime.onMessage.addListener((msg, sender) => {
   if (msg && msg.type === "open-pdf" && msg.url) {
-    const target = VIEWER_PAGE + "?file=" + encodeURIComponent(msg.url);
-    return browser.tabs.update(sender.tab ? sender.tab.id : undefined, { url: target })
-      .catch(() => browser.tabs.create({ url: target }));
+    return buildViewerLink(msg.url).then((target) =>
+      browser.tabs.update(sender.tab ? sender.tab.id : undefined, { url: target })
+        .catch(() => browser.tabs.create({ url: target }))
+    );
   }
 });
